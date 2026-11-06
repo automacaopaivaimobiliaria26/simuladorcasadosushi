@@ -19,7 +19,7 @@ A saída estática de produção fica em `dist/public/`.
 
 ## VPS — Docker / EasyPanel / Traefik
 
-A configuração de produção está em `Dockerfile` e `deploy/vps/nginx.conf`. No EasyPanel, conecte este repositório e selecione a branch de produção; use o Dockerfile na raiz, build context `.` e porta interna do contêiner `80`. Registre o domínio na aplicação para que o Traefik faça o roteamento HTTPS. Não publique portas do contêiner diretamente no host.
+A configuração de produção está em `Dockerfile` e `deploy/vps/nginx.conf`. O container é compilado para o caminho `https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi/`; a regra Traefik deve combinar esse host com `Path('/simuladorcasasushi') || PathPrefix('/simuladorcasasushi/')`. Preserve o router existente da raiz do domínio: não associe este app ao host sem o filtro de caminho. Use o Dockerfile na raiz, build context `.` e porta interna do contêiner `80`; não publique portas diretamente no host.
 
 Consulte [`deploy/vps/README.md`](deploy/vps/README.md) para o procedimento completo, verificação e reversão.
 
@@ -27,4 +27,4 @@ Consulte [`deploy/vps/README.md`](deploy/vps/README.md) para o procedimento comp
 
 Esta página é estática e não tem login. As fórmulas e premissas iniciais necessárias ao simulador são entregues ao navegador; portanto, podem ser inspecionadas por quem acessar o site. Se esses dados forem confidenciais, não publique o site sem restringir o acesso. A aplicação não inclui o arquivo Excel original nem o documento de arquitetura.
 
-`localStorage` é isolado por domínio e navegador. Antes de mudar de domínio, exporte a configuração em Excel e importe-a no endereço novo se quiser preservar as premissas personalizadas.
+`localStorage` é isolado por origem (protocolo + host) e navegador. A mudança de `/` para `/simuladorcasasushi/` no mesmo host HTTPS preserva a origem e deve manter os cenários desse navegador. Antes de mudar de host, exporte a configuração em Excel e importe-a no endereço novo.

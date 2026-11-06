@@ -171,6 +171,9 @@ function vitePluginPublicPlatformConfig(): Plugin {
 const plugins = [vitePluginPublicPlatformConfig(), react(), tailwindcss(), jsxLocPlugin(), vitePluginManusDebugCollector()];
 
 export default defineConfig({
+  // O container de VPS define VITE_BASE_PATH para publicação sob um subcaminho.
+  // Outros alvos continuam usando a raiz por padrão.
+  base: process.env.VITE_BASE_PATH || "/",
   plugins,
   resolve: {
     alias: {

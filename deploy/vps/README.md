@@ -2,50 +2,56 @@
 
 ## O que o pacote pressupõe
 
-Com base no documento `Arquitetura_Infraestrutura_Automacoes_Paiva(3).docx` (referência de 19/08/2026), a infraestrutura é Oracle Cloud Brazil East, Ubuntu 24.04 ARM64, Docker/Docker Swarm, EasyPanel e Traefik 3.6.7. A publicação pública deve entrar pelo proxy em HTTPS/443; 80 é a entrada HTTP do proxy. O documento marca 5678/5679 como fechadas e a regra TCP 3000 como existente para uso específico, sujeita a validação antes de qualquer alteração.
+A arquitetura analisada descreve Oracle Cloud Brazil East, Ubuntu 24.04 ARM64, Docker/Swarm, EasyPanel e Traefik. O site principal já atende `www.paivanegociosimobiliarios.com.br/`; este simulador deve ficar somente em `https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi/`.
 
-O pacote usa Nginx para servir arquivos estáticos na porta **interna** 80. Não abre firewall, não publica uma porta do host, não usa a regra 3000 e não se conecta aos bancos, n8n ou Evolution GO.
+O app é estático, usa Nginx na porta **interna** 80 e é compilado com a base `/simuladorcasasushi/`. Não abre porta no host, não muda DNS e não altera firewall.
 
-## Publicar pelo EasyPanel
+## Atualização do código já enviado
 
-1. Primeiro carregue o projeto para o repositório indicado em `docs/COMANDOS-GITHUB.md`, revise a branch e faça o merge aprovado para `main`.
-2. No EasyPanel, crie uma aplicação/site conectado ao repositório `automacaopaivaimobiliaria26/simuladorcasadosushi` e selecione `main` (ou a branch de homologação, se estiver validando antes do merge).
-3. Escolha build a partir de Dockerfile. A configuração deste pacote é o `Dockerfile` da raiz do repositório, com build context `.`.
-4. Configure a porta de destino/upstream do contêiner como HTTP `80`. Cadastre o domínio/subdomínio escolhido na aplicação e habilite o certificado HTTPS gerenciado pelo EasyPanel/Traefik.
-5. Implante somente essa aplicação. Não altere regras de firewall nem publique `3000`, `5678` ou `5679` no host. Não crie mapeamento público `80:80` ou `443:443`; essas portas pertencem ao proxy do EasyPanel.
-6. Verifique a URL pública:
+A atualização de prefixo é incremental sobre a branch existente `feat/vps-deploy`. Na pasta extraída do pacote, execute:
 
 ```bash
-curl -fsS https://SEU-DOMINIO/healthz
-curl -I https://SEU-DOMINIO/
-curl -fsS https://SEU-DOMINIO/manus-routes.json
+bash "$HOME/PROJETOS/simuladorcasadosushi-vps-package/commands/aplicar-prefixo.sh" \
+  "$HOME/PROJETOS/simuladorcasadosushi"
 ```
 
-Substitua `SEU-DOMINIO` pelo domínio configurado. Se o certificado ou rota não ficar saudável, confira primeiro o domínio e o destino interno `80` no EasyPanel; não abra portas adicionais como tentativa.
+O script exige a raiz de um clone limpo, `origin` correto e a branch `feat/vps-deploy`. Ele apenas aplica o patch local: **não** faz commit, push, merge nem deploy. Depois revise os arquivos e valide conforme as instruções em `docs/COMANDOS-GITHUB.md`; envie a atualização à mesma branch e aguarde o build no EasyPanel.
 
-## Teste local opcional
+## Roteamento do domínio sem tomar a raiz
 
-Com Docker instalado, na raiz do repositório:
+No EasyPanel, mantenha o site atual da raiz do domínio inalterado e configure o serviço do simulador com:
+
+- Repositório: `automacaopaivaimobiliaria26/simuladorcasadosushi`.
+- Branch: `feat/vps-deploy` para homologação; depois de mesclar o Pull Request, use `main`.
+- Build: Dockerfile na raiz do repositório; build context `.`.
+- Porta upstream do contêiner: HTTP `80`.
+- Host HTTPS: `www.paivanegociosimobiliarios.com.br`.
+- Caminho/expressão de rota: exatamente `/simuladorcasasushi` e subcaminhos. Regra Traefik equivalente: `Host("www.paivanegociosimobiliarios.com.br") && (Path("/simuladorcasasushi") || PathPrefix("/simuladorcasasushi/"))`.
+- Não configure um roteador apenas por `Host(...)` para este simulador, pois isso pode substituir o serviço que atende a página inicial. Dê precedência à rota específica, mantenha a rota raiz atual e não aplique middleware StripPrefix: o Nginx deste pacote recebe o caminho e remove o prefixo internamente.
+- Reutilize o certificado HTTPS válido do domínio gerenciado pelo EasyPanel/Traefik; não altere DNS, firewall nem portas públicas.
+
+Se o formulário de domínio do EasyPanel só aceitar o host e não permitir caminho/PathPrefix, **não salve** o host neste serviço (isso pode desviar a raiz para o simulador). Peça ao administrador da VPS para adicionar um roteador Traefik específico ao caminho, preservando o router atual da raiz. A disponibilidade da configuração de caminho depende da versão/configuração instalada do EasyPanel.
+
+## Verificação antes e depois da publicação
+
+Após reconstruir a imagem, confirme os seguintes endereços sem afetar a home existente:
 
 ```bash
-docker build -t simuladorcasadosushi:local .
-docker run --rm -d --name simuladorcasadosushi-test \
-  -p 127.0.0.1:18081:80 simuladorcasadosushi:local
-curl -fsS http://127.0.0.1:18081/healthz
-curl -I http://127.0.0.1:18081/
-docker stop simuladorcasadosushi-test
+curl -I https://www.paivanegociosimobiliarios.com.br/
+curl -I https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi
+curl -fsS https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi/healthz
+curl -fsS https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi/manus-routes.json
+curl -fsS https://www.paivanegociosimobiliarios.com.br/simuladorcasasushi/ | grep -Eo '/simuladorcasasushi/assets/[^" ]+'
 ```
 
-O mapeamento do teste fica preso a `127.0.0.1`; não cria exposição pública e não usa a porta 3000.
+Esperado: a home `/` continua servindo o site anterior; o endereço sem barra redireciona para `/simuladorcasasushi/`; healthcheck e manifesto retornam HTTP 200; o HTML referencia assets sob o mesmo prefixo. Abra a página em janela anônima e teste um recálculo, download/importação Excel e impressão PDF.
 
-## Variáveis, dados e privacidade
-
-Não é necessária variável de ambiente, banco, volume persistente ou credencial para servir a página. O contêiner final contém só Nginx e arquivos de `dist/public/`; o estágio de build instala as dependências, roda typecheck/testes e compila o front-end. O Dockerfile e `.dockerignore` excluem segredos, planilhas e documentos do contexto de build.
-
-Importante: as premissas iniciais e as fórmulas que a página precisa usar fazem parte do código cliente. O site não implementa autenticação; qualquer pessoa com acesso à URL pode inspecionar esses dados. Um repositório GitHub público também torna o código visível. Se isso não for aceitável, torne o repositório privado e restrinja o acesso ao site no EasyPanel antes do deploy; a proteção do repositório, sozinha, não protege uma página publicada publicamente.
-
-Os cenários editados persistem no `localStorage` do navegador e da origem. Exporte a configuração em Excel antes de trocar o domínio e importe-a no endereço novo.
+O `localStorage` é delimitado pela origem (host + protocolo), não pelo caminho. Como o host HTTPS será o mesmo, os cenários salvos nesse navegador tendem a continuar disponíveis; ainda assim, exporte uma configuração Excel antes de promover/reverter como cópia de segurança.
 
 ## Reversão
 
-Antes de promover, registre o commit atualmente usado pelo EasyPanel. Para reverter uma publicação, selecione no EasyPanel o commit/imagem saudável anterior e reimplante somente a aplicação do simulador. Não há migração de banco neste pacote. Mantenha a branch e o commit anteriores até validar o novo site.
+A reversão do código é selecionar no EasyPanel o commit/imagem anterior e redeployar somente o serviço do simulador. Para remover o caminho, desative apenas o router `PathPrefix("/simuladorcasasushi/")`, sem tocar no router nem no DNS do site principal.
+
+## Privacidade
+
+O simulador não implementa autenticação. As premissas e fórmulas no frontend são visíveis a quem acessa a URL. Restrinja o acesso no EasyPanel se esses dados não puderem ser públicos.
